@@ -1,3 +1,28 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Juragan Sahur</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "react": "https://esm.sh/react@18",
+                "react-dom/client": "https://esm.sh/react-dom@18/client"
+            }
+        }
+    </script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-900">
+    
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 // --- CONFIG & CONSTANTS ---
@@ -253,7 +278,7 @@ export default function App() {
           <div className="flex flex-col">
             <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Waktu Imsak</span>
             <span className={`text-2xl font-black ${timeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
-              00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+              00:{timeLeft < 10 ? \`0\${timeLeft}\` : timeLeft}
             </span>
           </div>
           
@@ -402,3 +427,12 @@ export default function App() {
     </div>
   );
 }
+
+// --- SCRIPT TAMBAHAN UNTUK RENDER KE BROWSER ---
+import { createRoot } from 'react-dom/client';
+const rootElement = document.getElementById('root');
+const root = createRoot(rootElement);
+root.render(<App />);
+    </script>
+</body>
+</html>
