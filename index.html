@@ -7,14 +7,8 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <script type="importmap">
-        {
-            "imports": {
-                "react": "https://esm.sh/react@18",
-                "react-dom/client": "https://esm.sh/react-dom@18/client"
-            }
-        }
-    </script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
@@ -22,8 +16,10 @@
     
     <div id="root"></div>
 
-    <script type="text/babel" data-type="module">
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+    <script type="text/babel">
+    
+// Ambil hooks langsung dari React Global
+const { useState, useEffect, useCallback, useRef } = React;
 
 // --- CONFIG & CONSTANTS ---
 const GAME_DURATION = 60; // seconds
@@ -43,7 +39,7 @@ const TOOLS = {
   kopi: { id: 'kopi', icon: '☕', name: 'Kopi Hitam' },
 };
 
-export default function App() {
+function App() {
   // --- AUDIO SETUP ---
   const bgmRef = useRef(null);
   const sfxRefs = useRef(null);
@@ -278,7 +274,7 @@ export default function App() {
           <div className="flex flex-col">
             <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Waktu Imsak</span>
             <span className={`text-2xl font-black ${timeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
-              00:{timeLeft < 10 ? \`0\${timeLeft}\` : timeLeft}
+              00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
             </span>
           </div>
           
@@ -429,10 +425,10 @@ export default function App() {
 }
 
 // --- SCRIPT TAMBAHAN UNTUK RENDER KE BROWSER ---
-import { createRoot } from 'react-dom/client';
 const rootElement = document.getElementById('root');
-const root = createRoot(rootElement);
+const root = ReactDOM.createRoot(rootElement);
 root.render(<App />);
+
     </script>
 </body>
 </html>
