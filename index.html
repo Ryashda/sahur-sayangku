@@ -1,0 +1,404 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+
+// --- CONFIG & CONSTANTS ---
+const GAME_DURATION = 60; // seconds
+const HOUSE_COUNT = 6;
+
+const SLEEPER_TYPES = {
+  BIASA: { id: 'BIASA', icon: '💤', tool: 'kentongan', name: 'Warga Biasa', time: 5000 },
+  KEBO: { id: 'KEBO', icon: '🦏', tool: 'panci', name: 'Si Kebo', time: 6000 },
+  KOS: { id: 'KOS', icon: '🎧', tool: 'indomie', name: 'Anak Kos', time: 4000 },
+  RT: { id: 'RT', icon: '👑', tool: 'kopi', name: 'Pak RT', time: 5000 },
+};
+
+const TOOLS = {
+  kentongan: { id: 'kentongan', icon: '🪵', name: 'Kentongan' },
+  panci: { id: 'panci', icon: '🥘', name: 'Panci Emak' },
+  indomie: { id: 'indomie', icon: '🍜', name: 'Indomie' },
+  kopi: { id: 'kopi', icon: '☕', name: 'Kopi Hitam' },
+};
+
+export default function App() {
+  // --- AUDIO SETUP ---
+  const bgmRef = useRef(null);
+  const sfxRefs = useRef(null);
+
+  useEffect(() => {
+    // Inisialisasi Audio (pastikan file sayang.mp3 ada di folder public/sama dengan web)
+    bgmRef.current = new Audio('sayang.mp3');
+    bgmRef.current.loop = true;
+    bgmRef.current.volume = 0.4; // Volume background music agar tidak menutupi SFX
+
+    // Sound effects (sementara pakai URL publik, bisa kamu ganti mp3 sendiri nanti)
+    sfxRefs.current = {
+      kentongan: new Audio('https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg'),
+      panci: new Audio('https://actions.google.com/sounds/v1/impacts/crash.ogg'),
+      indomie: new Audio('https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg'),
+      kopi: new Audio('https://actions.google.com/sounds/v1/water/pouring_water.ogg'),
+      success: new Audio('https://actions.google.com/sounds/v1/cartoon/clown_horn.ogg'),
+      fail: new Audio('https://actions.google.com/sounds/v1/cartoon/slide_whistle.ogg')
+    };
+  }, []);
+
+  const playSound = (soundName) => {
+    if (sfxRefs.current && sfxRefs.current[soundName]) {
+      sfxRefs.current[soundName].currentTime = 0;
+      sfxRefs.current[soundName].play().catch(e => console.log("Audio error:", e));
+    }
+  };
+
+  const [gameState, setGameState] = useState('START'); // START, PLAYING, OVER
+  const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
+  const [score, setScore] = useState(0);
+  const [equippedTool, setEquippedTool] = useState('kentongan');
+  
+  // Array of 6 houses. Each can have a sleeper object and a popup message.
+  const [houses, setHouses] = useState(Array(HOUSE_COUNT).fill({ sleeper: null, popup: null }));
+  const timerRef = useRef(null);
+  const gameLoopRef = useRef(null);
+
+  // --- AUDIO / SOUND EFFECTS (Simulated with Popups) ---
+  const showPopup = (index, text, color = 'text-green-400') => {
+    setHouses(prev => {
+      const newHouses = [...prev];
+      newHouses[index] = { ...newHouses[index], popup: { text, color, id: Date.now() } };
+      return newHouses;
+    });
+
+    // Clear popup after 1 second
+    setTimeout(() => {
+      setHouses(prev => {
+        const newHouses = [...prev];
+        if (newHouses[index].popup?.id === prev[index].popup?.id) {
+          newHouses[index] = { ...newHouses[index], popup: null };
+        }
+        return newHouses;
+      });
+    }, 1000);
+  };
+
+  // --- GAME LOGIC ---
+  const startGame = () => {
+    setGameState('PLAYING');
+    setTimeLeft(GAME_DURATION);
+    setScore(0);
+    setEquippedTool('kentongan');
+    setHouses(Array(HOUSE_COUNT).fill({ sleeper: null, popup: null }));
+    
+    // Play Background Music
+    if (bgmRef.current) {
+      bgmRef.current.currentTime = 0;
+      bgmRef.current.play().catch(e => console.log("BGM butuh interaksi user", e));
+    }
+  };
+
+  const pauseGame = () => {
+    setGameState('PAUSED');
+    if (bgmRef.current) {
+      bgmRef.current.pause();
+    }
+  };
+
+  const resumeGame = () => {
+    setGameState('PLAYING');
+    if (bgmRef.current) {
+      bgmRef.current.play().catch(e => console.log("Audio error:", e));
+    }
+  };
+
+  const quitGame = () => {
+    setGameState('START');
+    if (bgmRef.current) {
+      bgmRef.current.pause();
+      bgmRef.current.currentTime = 0;
+    }
+  };
+
+  const endGame = useCallback(() => {
+    setGameState('OVER');
+    clearInterval(timerRef.current);
+    clearInterval(gameLoopRef.current);
+    
+    // Matikan Background Music saat game selesai
+    if (bgmRef.current) {
+      bgmRef.current.pause();
+    }
+  }, []);
+
+  // Main game timer
+  useEffect(() => {
+    if (gameState === 'PLAYING') {
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            endGame();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [gameState, endGame]);
+
+  // Spawner loop
+  useEffect(() => {
+    if (gameState === 'PLAYING') {
+      gameLoopRef.current = setInterval(() => {
+        setHouses(prev => {
+          const newHouses = [...prev];
+          // Find empty houses
+          const emptyIndices = newHouses.map((h, i) => h.sleeper === null ? i : -1).filter(i => i !== -1);
+          
+          if (emptyIndices.length > 0 && Math.random() > 0.4) { // 60% chance to spawn if there's space
+            const randomHouseIndex = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
+            const sleeperKeys = Object.keys(SLEEPER_TYPES);
+            const randomSleeper = SLEEPER_TYPES[sleeperKeys[Math.floor(Math.random() * sleeperKeys.length)]];
+            
+            newHouses[randomHouseIndex] = {
+              ...newHouses[randomHouseIndex],
+              sleeper: { ...randomSleeper, spawnedAt: Date.now() }
+            };
+          }
+
+          // Check for timeouts (warga kesiangan puasa)
+          const now = Date.now();
+          newHouses.forEach((house, i) => {
+            if (house.sleeper && now - house.sleeper.spawnedAt > house.sleeper.time) {
+               // Missed!
+               showPopup(i, "Kesiangan! 😭", "text-red-500");
+               newHouses[i] = { ...newHouses[i], sleeper: null };
+               setScore(s => Math.max(0, s - 10)); // Penalty for missing
+            }
+          });
+
+          return newHouses;
+        });
+      }, 800); // Check every 800ms
+    }
+    return () => clearInterval(gameLoopRef.current);
+  }, [gameState]);
+
+  // Handle hitting a house
+  const handleHouseClick = (index) => {
+    if (gameState !== 'PLAYING') return;
+    
+    const house = houses[index];
+    if (!house.sleeper) return;
+
+    const sleeper = house.sleeper;
+    
+    // Bunyikan suara alat yang sedang dipakai
+    playSound(equippedTool);
+    
+    if (sleeper.tool === equippedTool) {
+      // SUCCESS
+      setTimeout(() => playSound('success'), 200); // Suara sukses delay dikit
+      setScore(s => s + 100);
+      showPopup(index, "SAHURRR! 🥳", "text-yellow-300 font-bold text-2xl");
+      // Remove sleeper
+      setHouses(prev => {
+        const newHouses = [...prev];
+        newHouses[index] = { ...newHouses[index], sleeper: null };
+        return newHouses;
+      });
+    } else {
+      // FAILED / WRONG TOOL
+      setTimeout(() => playSound('fail'), 200); // Suara gagal delay dikit
+      setScore(s => Math.max(0, s - 20));
+      
+      // Custom funny responses based on wrong tool combinations
+      let msg = "Zzz... Salah sasaran";
+      let color = "text-red-400";
+
+      if (sleeper.id === 'RT' && equippedTool === 'panci') {
+        msg = "DICORET DARI KK! 😡";
+        color = "text-red-600 font-bold text-xl";
+        setScore(s => Math.max(0, s - 50));
+      } else if (sleeper.id === 'KEBO' && equippedTool === 'kentongan') {
+        msg = "5 Menit lagi mak... 😴";
+      } else if (sleeper.id === 'KOS' && (equippedTool === 'kentongan' || equippedTool === 'panci')) {
+         msg = "Lagi push rank! 🎮";
+      } else if (sleeper.id === 'RT' && equippedTool === 'indomie') {
+         msg = "Bapak maunya kopi! ☕";
+      } else if (sleeper.id === 'BIASA' && equippedTool === 'panci') {
+         msg = "Kaget woy! Jantungan! 🤬";
+      }
+
+      showPopup(index, msg, color);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center font-sans overflow-hidden p-4">
+      {/* Custom Styles for Animations */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes floatUp {
+          0% { opacity: 1; transform: translateY(0) scale(1); }
+          100% { opacity: 0; transform: translateY(-40px) scale(1.2); }
+        }
+        .animate-float {
+          animation: floatUp 1s ease-out forwards;
+        }
+        .bg-pattern {
+          background-image: radial-gradient(#334155 2px, transparent 2px);
+          background-size: 20px 20px;
+        }
+      `}} />
+
+      <div className="w-full max-w-md bg-slate-800 rounded-3xl shadow-2xl overflow-hidden border-4 border-slate-700 relative">
+        
+        {/* HEADER / HUD */}
+        <div className="bg-slate-700 p-4 flex justify-between items-center border-b-4 border-slate-600">
+          <div className="flex flex-col">
+            <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Waktu Imsak</span>
+            <span className={`text-2xl font-black ${timeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+              00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+            </span>
+          </div>
+          
+          {/* TOMBOL PAUSE */}
+          {(gameState === 'PLAYING' || gameState === 'PAUSED') && (
+            <button 
+              onClick={gameState === 'PLAYING' ? pauseGame : resumeGame}
+              className="bg-slate-800 hover:bg-slate-600 border-2 border-slate-500 text-white rounded-xl w-10 h-10 flex items-center justify-center transition-all active:scale-95 shadow-md"
+              title="Pause/Resume"
+            >
+              {gameState === 'PLAYING' ? '⏸️' : '▶️'}
+            </button>
+          )}
+
+          <div className="flex flex-col items-end">
+            <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Skor Pahala</span>
+            <span className="text-2xl font-black text-yellow-400">{score}</span>
+          </div>
+        </div>
+
+        {/* GAME AREA */}
+        <div className="p-6 bg-slate-800 bg-pattern min-h-[350px] relative">
+          
+          {gameState === 'START' && (
+            <div className="absolute inset-0 bg-slate-900/90 z-20 flex flex-col items-center justify-center p-6 text-center">
+              <h1 className="text-4xl font-black text-yellow-400 mb-2 drop-shadow-md">JURAGAN SAHUR</h1>
+              <p className="text-slate-200 mb-6 text-sm">Bangunin warga sebelum Imsak! Jangan sampai salah pilih alat, atau Pak RT ngamuk!</p>
+              
+              <div className="grid grid-cols-2 gap-4 text-left text-xs text-slate-300 mb-6 w-full max-w-[280px]">
+                <div className="bg-slate-800 p-2 rounded">💤 Warga: 🪵 Kentongan</div>
+                <div className="bg-slate-800 p-2 rounded">🦏 Kebo: 🥘 Panci</div>
+                <div className="bg-slate-800 p-2 rounded">🎧 Anak Kos: 🍜 Indomie</div>
+                <div className="bg-slate-800 p-2 rounded">👑 Pak RT: ☕ Kopi</div>
+              </div>
+
+              <button 
+                onClick={startGame}
+                className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold py-3 px-8 rounded-full shadow-[0_4px_0_#b45309] active:shadow-[0_0px_0_#b45309] active:translate-y-1 transition-all text-lg"
+              >
+                MULAI GREBEK!
+              </button>
+            </div>
+          )}
+
+          {/* MENU PAUSE (JEDA) */}
+          {gameState === 'PAUSED' && (
+            <div className="absolute inset-0 bg-slate-900/95 z-30 flex flex-col items-center justify-center p-6 text-center backdrop-blur-sm">
+              <h2 className="text-4xl font-black text-yellow-400 mb-8 tracking-widest drop-shadow-lg">JEDA BENTAR</h2>
+              
+              <button 
+                onClick={resumeGame}
+                className="bg-green-500 hover:bg-green-400 text-white font-bold py-3 px-8 rounded-full shadow-[0_4px_0_#166534] active:shadow-[0_0px_0_#166534] active:translate-y-1 transition-all mb-4 w-full max-w-[220px]"
+              >
+                LANJUT MAIN ▶️
+              </button>
+              
+              <button 
+                onClick={quitGame}
+                className="bg-red-500 hover:bg-red-400 text-white font-bold py-3 px-8 rounded-full shadow-[0_4px_0_#991b1b] active:shadow-[0_0px_0_#991b1b] active:translate-y-1 transition-all w-full max-w-[220px]"
+              >
+                KELUAR 🚪
+              </button>
+            </div>
+          )}
+
+          {gameState === 'OVER' && (
+            <div className="absolute inset-0 bg-slate-900/90 z-20 flex flex-col items-center justify-center p-6 text-center">
+              <h2 className="text-3xl font-black text-red-500 mb-2">WAKTU IMSAK HABIS!</h2>
+              <p className="text-slate-300 mb-2">Total Skor Pahala Kamu:</p>
+              <div className="text-6xl font-black text-yellow-400 mb-6 animate-bounce">{score}</div>
+              <p className="text-slate-400 italic mb-6 text-sm">
+                {score < 500 ? "Wah, banyak warga yang puasa lemes gara-gara kesiangan nih." : 
+                 score < 1500 ? "Lumayan! Tapi besok-besok banguninnya lebih kenceng ya." : 
+                 "Luar biasa! Kamu resmi diangkat jadi Duta Sahur Komplek!"}
+              </p>
+              <button 
+                onClick={startGame}
+                className="bg-blue-500 hover:bg-blue-400 text-white font-bold py-3 px-8 rounded-full shadow-[0_4px_0_#1e3a8a] active:shadow-[0_0px_0_#1e3a8a] active:translate-y-1 transition-all"
+              >
+                MAIN LAGI YUK
+              </button>
+            </div>
+          )}
+
+          {/* GRID RUMAH */}
+          <div className="grid grid-cols-2 gap-6 h-full">
+            {houses.map((house, index) => (
+              <div 
+                key={index} 
+                className="relative flex justify-center items-end h-28 cursor-pointer"
+                onClick={() => handleHouseClick(index)}
+              >
+                {/* Rumah SVG / Emoji base */}
+                <div className="absolute bottom-0 text-7xl select-none transition-transform hover:scale-105 active:scale-95">
+                  🏠
+                </div>
+
+                {/* Sleeper Icon */}
+                {house.sleeper && (
+                  <div className="absolute top-0 right-4 text-4xl animate-bounce select-none pointer-events-none drop-shadow-lg z-10">
+                    {house.sleeper.icon}
+                  </div>
+                )}
+
+                {/* Popup Message */}
+                {house.popup && (
+                  <div className={`absolute top-[-20px] left-1/2 transform -translate-x-1/2 whitespace-nowrap z-20 pointer-events-none animate-float font-bold ${house.popup.color}`}>
+                    {house.popup.text}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CONTROLS / TOOLBAR */}
+        <div className="bg-slate-900 p-4 border-t-4 border-slate-700">
+          <p className="text-center text-slate-400 text-xs mb-3 font-semibold uppercase tracking-widest">Pilih Senjata Sahur</p>
+          <div className="flex justify-between gap-2">
+            {Object.values(TOOLS).map((tool) => (
+              <button
+                key={tool.id}
+                onClick={() => setEquippedTool(tool.id)}
+                className={`flex-1 flex flex-col items-center justify-center p-3 rounded-xl transition-all duration-200 border-b-4 ${
+                  equippedTool === tool.id 
+                    ? 'bg-yellow-500 border-yellow-700 transform translate-y-1 scale-105 shadow-inner' 
+                    : 'bg-slate-700 border-slate-800 hover:bg-slate-600 shadow-md'
+                }`}
+              >
+                <span className="text-3xl mb-1 filter drop-shadow-md">{tool.icon}</span>
+                <span className={`text-[10px] font-bold ${equippedTool === tool.id ? 'text-slate-900' : 'text-slate-300'}`}>
+                  {tool.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+      </div>
+      
+      {/* Footer Info for the GF */}
+      <div className="mt-6 text-center text-slate-500 text-xs max-w-md">
+        <p>❤️ Dibuat khusus biar puasanya semangat! Hati-hati jangan siram Pak RT pakai panci ya, nanti marah.</p>
+      </div>
+
+    </div>
+  );
+}
